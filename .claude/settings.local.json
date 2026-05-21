@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wsl -e bash -c \"ls /mnt/c/Users/aabed/Desktop/Platform/frontend/ 2>&1 && echo '---' && ls /mnt/c/Users/aabed/Desktop/Platform/frontend/node_modules 2>/dev/null | head -5 || echo 'node_modules manquant'\")",
+      "PowerShell(netstat -ano)",
+      "Bash(docker --version)",
+      "Bash(psql --version)",
+      "PowerShell(wsl -- bash -c \"which docker 2>/dev/null && docker --version; which psql 2>/dev/null && psql --version; which python3 2>/dev/null && python3 --version; lsb_release -d 2>/dev/null || cat /etc/os-release | head -3\" 2>&1)",
+      "PowerShell(wsl -- bash -c \"docker ps 2>&1 | head -5; echo '---'; pg_lsclusters 2>/dev/null || service postgresql status 2>&1 | head -5\")",
+      "PowerShell(wsl -- bash -c \"sudo service postgresql start 2>&1\")",
+      "PowerShell(wsl -- bash -c \"sudo service postgresql status 2>&1\")",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\aabed\\\\Desktop\\\\Platform\" -Force)",
+      "Bash(Select-Object Name, PSIsContainer)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\aabed\\\\Desktop\\\\Platform\\\\backend\\\\app\" -Directory -Recurse | Select-Object FullName | ForEach-Object { $_.FullName.Replace\\(\"c:\\\\Users\\\\aabed\\\\Desktop\\\\Platform\\\\backend\\\\app\\\\\", \"\"\\) } | Sort-Object | Select-Object -First 30)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\aabed\\\\Desktop\\\\Platform\\\\frontend\\\\app\" -Directory -Recurse | Select-Object FullName | ForEach-Object { $_.FullName.Replace\\(\"c:\\\\Users\\\\aabed\\\\Desktop\\\\Platform\\\\frontend\\\\app\\\\\", \"\"\\) } | Sort-Object)",
+      "Bash(wsl --list --verbose)",
+      "Bash(wsl -e bash -c \"docker --version && docker compose version 2>/dev/null || docker-compose --version 2>/dev/null\")",
+      "Bash(wsl -e bash -c \"psql --version && python3 --version && node --version && npm --version\")",
+      "Bash(wsl -e bash -c \"ls /mnt/c/Users/aabed/Desktop/Platform/\")",
+      "Bash(wsl -e bash -c \"docker info --format '{{.ServerVersion}}' 2>&1 | head -3\")"
+    ]
+  }
+}

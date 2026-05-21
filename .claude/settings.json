@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wsl -e bash -c \"cd /mnt/c/Users/aabed/Desktop/Platform/backend && source venv/bin/activate && timeout 5 python3 -m uvicorn app.main:app --port 8001 2>&1 || true\")",
+      "Bash(wsl bash *)",
+      "Bash(wsl -d Ubuntu bash)",
+      "Bash(wsl -d Ubuntu -e python3 -c ' *)",
+      "Bash(wsl -d Ubuntu -e bash -c ' *)"
+    ]
+  }
+}

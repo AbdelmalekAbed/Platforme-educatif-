@@ -1,0 +1,26 @@
+#!/bin/bash
+# Script pour créer le compte admin dans Docker
+# Utilisation: docker-compose exec backend python seed_admin.py
+
+echo "📝 Script de création du compte admin via Docker"
+echo "=============================================="
+echo ""
+echo "Option 1 - Via docker-compose (RECOMMANDÉ):"
+echo "  1. Assurez-vous que Docker Desktop est installé"
+echo "  2. Exécutez le démarrage complet:"
+echo "     docker-compose up -d"
+echo ""
+echo "  3. Créez le compte admin:"
+echo "     docker-compose exec backend python seed_admin.py"
+echo ""
+echo "Option 2 - Commande simple (si les conteneurs sont déjà lancés):"
+echo "  docker-compose exec backend python seed_admin.py"
+echo ""
+echo "Option 3 - Installation locale avec Python:"
+echo "  1. Installez Python 3.9+ avec pip"
+echo "  2. Installez les dépendances:"
+echo "     cd backend && pip install -r requirements/base.txt"
+echo "  3. Exécutez le script:"
+echo "     python ../seed_admin.py"
+echo ""
+echo "=============================================="
