@@ -17,7 +17,16 @@
       "Bash(wsl -e bash -c \"docker --version && docker compose version 2>/dev/null || docker-compose --version 2>/dev/null\")",
       "Bash(wsl -e bash -c \"psql --version && python3 --version && node --version && npm --version\")",
       "Bash(wsl -e bash -c \"ls /mnt/c/Users/aabed/Desktop/Platform/\")",
-      "Bash(wsl -e bash -c \"docker info --format '{{.ServerVersion}}' 2>&1 | head -3\")"
+      "Bash(wsl -e bash -c \"docker info --format '{{.ServerVersion}}' 2>&1 | head -3\")",
+      "PowerShell(Get-Location; Get-ChildItem \"C:\\\\Users\\\\aabed\\\\Desktop\\\\Platform\\\\backend\" -Force | Where-Object { $_.Name -in @\\('venv','.venv','env','.env','requirements.txt','pyproject.toml'\\) } | Select-Object Name, Mode)",
+      "Bash(venv/bin/python --version)",
+      "PowerShell(Get-Command python -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Command py -ErrorAction SilentlyContinue)",
+      "PowerShell(wsl -- bash -c \"cd /mnt/c/Users/aabed/Desktop/Platform/backend && ls venv/bin | head -10 && venv/bin/python --version\" 2>&1)",
+      "PowerShell(wsl -- bash -c \"cd /mnt/c/Users/aabed/Desktop/Platform/backend && venv/bin/python -c 'import psycopg2; print\\(\\\\\"psycopg2\\\\\", psycopg2.__version__\\); import asyncpg; print\\(\\\\\"asyncpg\\\\\", asyncpg.__version__\\); import alembic; print\\(\\\\\"alembic\\\\\", alembic.__version__\\)'\" 2>&1)",
+      "Bash(wsl -- bash -lc 'cd /mnt/c/Users/aabed/Desktop/Platform/backend && venv/bin/python -c \"import psycopg2, asyncpg, alembic; print\\(\\\\\"psycopg2\\\\\", psycopg2.__version__\\); print\\(\\\\\"asyncpg\\\\\", asyncpg.__version__\\); print\\(\\\\\"alembic\\\\\", alembic.__version__\\)\"')",
+      "Bash(wsl -- bash -lc 'cd /mnt/c/Users/aabed/Desktop/Platform/backend && venv/bin/python -c \" *)",
+      "Bash(wsl -- bash -lc 'cd /mnt/c/Users/aabed/Desktop/Platform/backend && venv/bin/alembic upgrade head')"
     ]
   }
 }

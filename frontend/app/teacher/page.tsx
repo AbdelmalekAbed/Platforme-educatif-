@@ -11,7 +11,7 @@ import {
   Video,
   Users,
   ClipboardList,
-  Settings2,
+  Eye,
   AlertCircle,
 } from "lucide-react";
 import Link from "next/link";
@@ -40,11 +40,8 @@ export default function TeacherDashboardPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Espace Professeur</h1>
-          <p className="text-muted-foreground">Gérez vos cours et sessions</p>
+          <p className="text-muted-foreground">Animez vos cours et accompagnez vos élèves</p>
         </div>
-        <Link href="/teacher/courses">
-          <Button>+ Nouveau Cours</Button>
-        </Link>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -83,7 +80,7 @@ export default function TeacherDashboardPage() {
             </div>
           ) : data.courses.length === 0 ? (
             <p className="text-muted-foreground">
-              Aucun cours créé. Commencez par créer votre premier cours.
+              Aucun cours ne vous est assigné pour le moment. Contactez l&apos;administration.
             </p>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -111,8 +108,8 @@ export default function TeacherDashboardPage() {
                       )}
                       {isIncomplete && (
                         <div
-                          className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-red-500/90 text-white text-[10px] font-semibold px-2 py-0.5"
-                          title="Ce cours n'a encore aucun chapitre. Cliquez sur « Gérer le contenu » pour en ajouter."
+                          className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-yellow-500/90 text-white text-[10px] font-semibold px-2 py-0.5"
+                          title="Ce cours n'a encore aucun chapitre. L'admin doit ajouter le contenu."
                         >
                           <AlertCircle className="h-3 w-3" />
                           Aucun chapitre
@@ -163,7 +160,7 @@ export default function TeacherDashboardPage() {
 
                       <Link href={`/teacher/courses/${course.id}/content`}>
                         <Button size="sm" className="w-full">
-                          <Settings2 className="h-4 w-4 mr-1" /> Gérer le contenu
+                          <Eye className="h-4 w-4 mr-1" /> Voir contenu
                         </Button>
                       </Link>
                     </CardContent>

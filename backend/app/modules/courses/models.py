@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Boolean, DateTime, Text, ForeignKey, Integer, Float, JSON
+from sqlalchemy import Column, String, Boolean, DateTime, Text, ForeignKey, Integer, Float, JSON, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -182,3 +182,29 @@ class ChapterResourceProgress(Base):
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
     resource = relationship("ChapterResource", back_populates="progress")
+
+
+class StudentCourseKnown(Base):
+    """Student-declared 'I already know this whole course'. Forces 100% progress without erasing actual visits."""
+    __tablename__ = "student_course_known"
+    __table_args__ = (
+        UniqueConstraint("student_id", "course_id", name="uq_student_course_known"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    student_id = Column(UUID(as_uuid=True), ForeignKey("student_profiles.id", ondelete="CASCADE"), nullable=False)
+    course_id = Column(UUID(as_uuid=True), ForeignKey("courses.id", ondelete="CASCADE"), nullable=False)
+    marked_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class StudentChapterKnown(Base):
+    """Student-declared 'I already know this chapter'. Forces all its items to count as completed."""
+    __tablename__ = "student_chapter_known"
+    __table_args__ = (
+        UniqueConstraint("student_id", "chapter_id", name="uq_student_chapter_known"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    student_id = Column(UUID(as_uuid=True), ForeignKey("student_profiles.id", ondelete="CASCADE"), nullable=False)
+    chapter_id = Column(UUID(as_uuid=True), ForeignKey("chapters.id", ondelete="CASCADE"), nullable=False)
+    marked_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

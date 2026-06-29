@@ -17,6 +17,13 @@ venv/
 # Database
 *.db
 *.sqlite3
+backups/
+*.sql.gz
+*.dump
+
+# Uploads & contenu binaire (fichiers utilisateur — vivent dans MinIO/S3, pas dans Git)
+backend/uploads/
+cours/
 
 # OS
 .DS_Store

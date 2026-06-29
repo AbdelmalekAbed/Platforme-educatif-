@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, type ReactNode } from "react";
 import Link from "next/link";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/store/auth";
@@ -21,6 +21,7 @@ import {
   Trash2,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   Video,
   FileText,
   Layers,
@@ -28,7 +29,25 @@ import {
   HelpCircle,
   X,
   Paperclip,
+  GripVertical,
 } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 const RESOURCE_KINDS: { value: ResourceKind; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { value: "video", label: "Vidéo", icon: Video },
@@ -52,17 +71,110 @@ interface ResourceForm {
   url: string;
 }
 
+/**
+ * Drag handle + up/down arrow buttons rendered on every reorderable row.
+ * Pulled into its own component because chapters, items, and questions all use
+ * the same affordances. `attributes`/`listeners` come from useSortable in the
+ * parent Sortable wrapper.
+ */
+function ReorderControls({
+  attributes,
+  listeners,
+  onMoveUp,
+  onMoveDown,
+  isFirst,
+  isLast,
+}: {
+  attributes: object;
+  listeners: object | undefined;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  isFirst: boolean;
+  isLast: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-0.5 shrink-0">
+      <button
+        type="button"
+        aria-label="Glisser pour réordonner"
+        title="Glisser pour réordonner"
+        className="cursor-grab active:cursor-grabbing touch-none p-1 text-muted-foreground hover:text-foreground"
+        {...attributes}
+        {...listeners}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        aria-label="Déplacer vers le haut"
+        title="Déplacer vers le haut"
+        disabled={isFirst}
+        onClick={(e) => {
+          e.stopPropagation();
+          onMoveUp();
+        }}
+        className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+      >
+        <ChevronUp className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        aria-label="Déplacer vers le bas"
+        title="Déplacer vers le bas"
+        disabled={isLast}
+        onClick={(e) => {
+          e.stopPropagation();
+          onMoveDown();
+        }}
+        className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+      >
+        <ChevronDown className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
+function Sortable({
+  id,
+  disabled,
+  children,
+}: {
+  id: string;
+  disabled?: boolean;
+  children: (slot: {
+    setNodeRef: (node: HTMLElement | null) => void;
+    style: React.CSSProperties;
+    attributes: object;
+    listeners: object | undefined;
+    isDragging: boolean;
+  }) => ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id, disabled });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+    zIndex: isDragging ? 10 : undefined,
+  };
+  return <>{children({ setNodeRef, style, attributes, listeners: listeners ?? undefined, isDragging })}</>;
+}
+
 interface CourseContentEditorProps {
   courseId: string;
   /** Either a static URL or a function called with the loaded course to compute the URL dynamically. */
   backHref: string | ((course: CourseFull | null) => string);
   backLabel?: string;
+  /** When true, hides all mutation UI (add/edit/delete) but keeps navigation and content display. */
+  readOnly?: boolean;
 }
 
 export function CourseContentEditor({
   courseId,
   backHref,
   backLabel = "Retour",
+  readOnly = false,
 }: CourseContentEditorProps) {
   const { isAuthenticated } = useAuthStore();
   const [course, setCourse] = useState<CourseFull | null>(null);
@@ -230,6 +342,106 @@ export function CourseContentEditor({
     setQuizDetails((s) => ({ ...s, [quizId]: refreshed }));
   };
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  /** Apply a new chapter order (optimistic local update + PATCH; reload on failure). */
+  const applyChapterReorder = async (newIds: string[]) => {
+    if (!course) return;
+    const byId = new Map(course.chapters.map((c) => [c.id, c]));
+    const reordered = newIds.map((id, idx) => {
+      const c = byId.get(id)!;
+      return { ...c, position: idx };
+    });
+    setCourse({ ...course, chapters: reordered });
+    try {
+      await api.reorderChapters(courseId, newIds);
+    } catch (err) {
+      console.error(err);
+      reload();
+    }
+  };
+
+  const moveChapter = (fromIdx: number, toIdx: number) => {
+    if (!course) return;
+    if (toIdx < 0 || toIdx >= course.chapters.length || fromIdx === toIdx) return;
+    const ids = arrayMove(
+      course.chapters.map((c) => c.id),
+      fromIdx,
+      toIdx
+    );
+    applyChapterReorder(ids);
+  };
+
+  /** Apply a new item order within one chapter. `entries` mixes resources and quizzes. */
+  const applyItemsReorder = async (
+    chapterId: string,
+    entries: { type: "resource" | "quiz"; id: string }[]
+  ) => {
+    if (!course) return;
+    const chapter = course.chapters.find((c) => c.id === chapterId);
+    if (!chapter) return;
+    const itemKey = (i: ChapterItem) => `${i.item_type}:${i.id}`;
+    const byKey = new Map(chapter.items.map((i) => [itemKey(i), i]));
+    const reordered = entries
+      .map((e, idx) => {
+        const it = byKey.get(`${e.type}:${e.id}`);
+        return it ? { ...it, position: idx } : null;
+      })
+      .filter((x): x is ChapterItem => x !== null);
+    const newChapters = course.chapters.map((c) =>
+      c.id === chapterId ? { ...c, items: reordered } : c
+    );
+    setCourse({ ...course, chapters: newChapters });
+    try {
+      await api.reorderChapterItems(chapterId, entries);
+    } catch (err) {
+      console.error(err);
+      reload();
+    }
+  };
+
+  const moveItem = (chapterId: string, fromIdx: number, toIdx: number) => {
+    if (!course) return;
+    const chapter = course.chapters.find((c) => c.id === chapterId);
+    if (!chapter) return;
+    if (toIdx < 0 || toIdx >= chapter.items.length || fromIdx === toIdx) return;
+    const entries = arrayMove(
+      chapter.items.map((i) => ({ type: i.item_type, id: i.id })),
+      fromIdx,
+      toIdx
+    );
+    applyItemsReorder(chapterId, entries);
+  };
+
+  const applyQuestionsReorder = async (quizId: string, newIds: string[]) => {
+    const quiz = quizDetails[quizId];
+    if (!quiz) return;
+    const byId = new Map(quiz.questions.map((q) => [q.id, q]));
+    const reordered = newIds.map((id, idx) => {
+      const q = byId.get(id)!;
+      return { ...q, position: idx };
+    });
+    setQuizDetails((s) => ({ ...s, [quizId]: { ...quiz, questions: reordered } }));
+    try {
+      await api.reorderQuizQuestions(quizId, newIds);
+    } catch (err) {
+      console.error(err);
+      const refreshed = await api.getQuizAdmin(quizId);
+      setQuizDetails((s) => ({ ...s, [quizId]: refreshed }));
+    }
+  };
+
+  const moveQuestion = (quizId: string, fromIdx: number, toIdx: number) => {
+    const quiz = quizDetails[quizId];
+    if (!quiz) return;
+    if (toIdx < 0 || toIdx >= quiz.questions.length || fromIdx === toIdx) return;
+    const ids = arrayMove(quiz.questions.map((q) => q.id), fromIdx, toIdx);
+    applyQuestionsReorder(quizId, ids);
+  };
+
   if (loading) {
     return <div className="animate-pulse text-muted-foreground">Chargement...</div>;
   }
@@ -251,7 +463,9 @@ export function CourseContentEditor({
       <div className="rounded-xl border bg-gradient-to-r from-primary/10 to-background p-6">
         <h1 className="text-2xl font-bold">{course.title}</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Gérez les chapitres et leurs fichiers (vidéo, PDF, quiz)
+          {readOnly
+            ? "Consultez les chapitres et leurs ressources (lecture seule)"
+            : "Gérez les chapitres et leurs fichiers (vidéo, PDF, quiz)"}
         </p>
         <div className="mt-3 flex gap-2 text-xs">
           {course.grade_level && (
@@ -263,43 +477,79 @@ export function CourseContentEditor({
         </div>
       </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Ajouter un chapitre</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-2">
-            <Input
-              placeholder="Ex: Aire, Périmètre et Volume 3ème"
-              value={newChapterTitle}
-              onChange={(e) => setNewChapterTitle(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && addChapter()}
-            />
-            <Button onClick={addChapter} disabled={!newChapterTitle.trim()}>
-              <Plus className="h-4 w-4 mr-1" /> Ajouter
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      {!readOnly && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Ajouter un chapitre</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Ex: Aire, Périmètre et Volume 3ème"
+                value={newChapterTitle}
+                onChange={(e) => setNewChapterTitle(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addChapter()}
+              />
+              <Button onClick={addChapter} disabled={!newChapterTitle.trim()}>
+                <Plus className="h-4 w-4 mr-1" /> Ajouter
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {course.chapters.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
             <Layers className="h-10 w-10 mx-auto mb-3 opacity-30" />
-            <p>Aucun chapitre. Créez-en un ci-dessus.</p>
+            <p>
+              {readOnly
+                ? "Aucun chapitre n'a été ajouté à ce cours pour le moment."
+                : "Aucun chapitre. Créez-en un ci-dessus."}
+            </p>
           </CardContent>
         </Card>
       ) : (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={(e: DragEndEvent) => {
+            if (readOnly || !course) return;
+            const { active, over } = e;
+            if (!over || active.id === over.id) return;
+            const ids = course.chapters.map((c) => c.id);
+            const from = ids.indexOf(String(active.id));
+            const to = ids.indexOf(String(over.id));
+            if (from < 0 || to < 0) return;
+            applyChapterReorder(arrayMove(ids, from, to));
+          }}
+        >
+          <SortableContext
+            items={course.chapters.map((c) => c.id)}
+            strategy={verticalListSortingStrategy}
+          >
         <div className="space-y-3">
           {course.chapters.map((chapter, cIdx) => {
             const expanded = expandedChapters.has(chapter.id);
             const rForm = resourceForm[chapter.id] ?? { title: "", kind: "pdf" as ResourceKind, url: "" };
             return (
-              <Card key={chapter.id}>
+              <Sortable key={chapter.id} id={chapter.id} disabled={readOnly}>
+                {({ setNodeRef, style, attributes, listeners }) => (
+              <Card ref={setNodeRef} style={style}>
                 <div
                   className="flex items-center gap-3 p-4 cursor-pointer hover:bg-accent/30"
                   onClick={() => toggleChapter(chapter.id)}
                 >
+                  {!readOnly && (
+                    <ReorderControls
+                      attributes={attributes}
+                      listeners={listeners}
+                      onMoveUp={() => moveChapter(cIdx, cIdx - 1)}
+                      onMoveDown={() => moveChapter(cIdx, cIdx + 1)}
+                      isFirst={cIdx === 0}
+                      isLast={cIdx === course.chapters.length - 1}
+                    />
+                  )}
                   {expanded ? (
                     <ChevronDown className="h-4 w-4 shrink-0" />
                   ) : (
@@ -314,65 +564,130 @@ export function CourseContentEditor({
                       {chapter.items_count} élément{chapter.items_count > 1 ? "s" : ""}
                     </div>
                   </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeChapter(chapter.id);
-                    }}
-                    className="p-2 text-muted-foreground hover:text-red-600"
-                    title="Supprimer le chapitre"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  {!readOnly && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeChapter(chapter.id);
+                      }}
+                      className="p-2 text-muted-foreground hover:text-red-600"
+                      title="Supprimer le chapitre"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
 
                 {expanded && (
                   <div className="border-t bg-muted/20 p-4 space-y-4">
-                    {/* Items list (resources + quizzes) */}
+                    {/* Items list (resources + quizzes) — single position sequence */}
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={(e: DragEndEvent) => {
+                        if (readOnly) return;
+                        const { active, over } = e;
+                        if (!over || active.id === over.id) return;
+                        const keys = chapter.items.map(
+                          (i) => `${i.item_type}:${i.id}` as string
+                        );
+                        const from = keys.indexOf(String(active.id));
+                        const to = keys.indexOf(String(over.id));
+                        if (from < 0 || to < 0) return;
+                        const reorderedKeys = arrayMove(keys, from, to);
+                        const entries = reorderedKeys.map((k) => {
+                          const [type, id] = k.split(":");
+                          return { type: type as "resource" | "quiz", id };
+                        });
+                        applyItemsReorder(chapter.id, entries);
+                      }}
+                    >
+                      <SortableContext
+                        items={chapter.items.map(
+                          (i) => `${i.item_type}:${i.id}`
+                        )}
+                        strategy={verticalListSortingStrategy}
+                      >
                     <div className="space-y-1.5">
                       {chapter.items.length === 0 && (
                         <div className="text-xs text-muted-foreground italic px-1">
                           Aucun fichier ni quiz. Ajoutez-en ci-dessous.
                         </div>
                       )}
-                      {chapter.items.map((item, iIdx) =>
-                        item.item_type === "resource" ? (
-                          <ResourceRow
-                            key={item.id}
-                            item={item}
-                            index={iIdx}
-                            onDelete={() => removeResource(item.id)}
-                          />
-                        ) : (
-                          <QuizRow
-                            key={item.id}
-                            item={item}
-                            index={iIdx}
-                            expanded={expandedQuizzes.has(item.id)}
-                            quiz={quizDetails[item.id]}
-                            form={
-                              quizQuestionForm[item.id] ?? {
-                                text: "",
-                                choices: [
-                                  { id: "a", text: "" },
-                                  { id: "b", text: "" },
-                                ],
-                                correct: "a",
-                              }
+                      {chapter.items.map((item, iIdx) => {
+                        const sortableId = `${item.item_type}:${item.id}`;
+                        const isFirst = iIdx === 0;
+                        const isLast = iIdx === chapter.items.length - 1;
+                        return (
+                          <Sortable key={sortableId} id={sortableId} disabled={readOnly}>
+                            {({ setNodeRef, style, attributes, listeners }) =>
+                              item.item_type === "resource" ? (
+                                <ResourceRow
+                                  item={item}
+                                  index={iIdx}
+                                  onDelete={() => removeResource(item.id)}
+                                  readOnly={readOnly}
+                                  sortableRef={setNodeRef}
+                                  sortableStyle={style}
+                                  dragAttributes={attributes}
+                                  dragListeners={listeners}
+                                  onMoveUp={() => moveItem(chapter.id, iIdx, iIdx - 1)}
+                                  onMoveDown={() => moveItem(chapter.id, iIdx, iIdx + 1)}
+                                  isFirst={isFirst}
+                                  isLast={isLast}
+                                />
+                              ) : (
+                                <QuizRow
+                                  item={item}
+                                  index={iIdx}
+                                  expanded={expandedQuizzes.has(item.id)}
+                                  quiz={quizDetails[item.id]}
+                                  form={
+                                    quizQuestionForm[item.id] ?? {
+                                      text: "",
+                                      choices: [
+                                        { id: "a", text: "" },
+                                        { id: "b", text: "" },
+                                      ],
+                                      correct: "a",
+                                    }
+                                  }
+                                  onToggle={() => toggleQuiz(item.id)}
+                                  onDelete={() => removeQuiz(item.id)}
+                                  onFormChange={(form) =>
+                                    setQuizQuestionForm((s) => ({ ...s, [item.id]: form }))
+                                  }
+                                  onAddQuestion={() => addQuestion(item.id)}
+                                  onRemoveQuestion={(qid) => removeQuestion(item.id, qid)}
+                                  readOnly={readOnly}
+                                  sortableRef={setNodeRef}
+                                  sortableStyle={style}
+                                  dragAttributes={attributes}
+                                  dragListeners={listeners}
+                                  onMoveUp={() => moveItem(chapter.id, iIdx, iIdx - 1)}
+                                  onMoveDown={() => moveItem(chapter.id, iIdx, iIdx + 1)}
+                                  isFirst={isFirst}
+                                  isLast={isLast}
+                                  sensors={sensors}
+                                  onReorderQuestions={(quizId, fromIdx, toIdx) =>
+                                    moveQuestion(quizId, fromIdx, toIdx)
+                                  }
+                                  onApplyQuestionsReorder={(quizId, ids) =>
+                                    applyQuestionsReorder(quizId, ids)
+                                  }
+                                />
+                              )
                             }
-                            onToggle={() => toggleQuiz(item.id)}
-                            onDelete={() => removeQuiz(item.id)}
-                            onFormChange={(form) =>
-                              setQuizQuestionForm((s) => ({ ...s, [item.id]: form }))
-                            }
-                            onAddQuestion={() => addQuestion(item.id)}
-                            onRemoveQuestion={(qid) => removeQuestion(item.id, qid)}
-                          />
-                        )
-                      )}
+                          </Sortable>
+                        );
+                      })}
                     </div>
+                      </SortableContext>
+                    </DndContext>
 
                     {/* Add new resource */}
+                    {!readOnly && (
+                    <>
                     <div className="rounded-lg border bg-card p-3 space-y-2">
                       <div className="text-xs font-semibold uppercase text-muted-foreground">
                         Ajouter un fichier
@@ -458,12 +773,18 @@ export function CourseContentEditor({
                     >
                       <HelpCircle className="h-3.5 w-3.5 mr-2" /> Ajouter un quiz
                     </Button>
+                    </>
+                    )}
                   </div>
                 )}
               </Card>
+                )}
+              </Sortable>
             );
           })}
         </div>
+          </SortableContext>
+        </DndContext>
       )}
     </div>
   );
@@ -473,14 +794,46 @@ function ResourceRow({
   item,
   index,
   onDelete,
+  readOnly = false,
+  sortableRef,
+  sortableStyle,
+  dragAttributes,
+  dragListeners,
+  onMoveUp,
+  onMoveDown,
+  isFirst,
+  isLast,
 }: {
   item: Extract<ChapterItem, { item_type: "resource" }>;
   index: number;
   onDelete: () => void;
+  readOnly?: boolean;
+  sortableRef?: (node: HTMLElement | null) => void;
+  sortableStyle?: React.CSSProperties;
+  dragAttributes?: object;
+  dragListeners?: object;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  isFirst?: boolean;
+  isLast?: boolean;
 }) {
   const Icon = KIND_ICON[item.kind] ?? FileText;
   return (
-    <div className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm">
+    <div
+      ref={sortableRef}
+      style={sortableStyle}
+      className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm"
+    >
+      {!readOnly && dragAttributes && onMoveUp && onMoveDown && (
+        <ReorderControls
+          attributes={dragAttributes}
+          listeners={dragListeners}
+          onMoveUp={onMoveUp}
+          onMoveDown={onMoveDown}
+          isFirst={!!isFirst}
+          isLast={!!isLast}
+        />
+      )}
       <span className="text-xs text-muted-foreground w-6 shrink-0">{index + 1}.</span>
       <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
       <span className="flex-1 line-clamp-1">{item.title}</span>
@@ -493,9 +846,11 @@ function ResourceRow({
       >
         Voir
       </a>
-      <button onClick={onDelete} className="text-muted-foreground hover:text-red-600">
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
+      {!readOnly && (
+        <button onClick={onDelete} className="text-muted-foreground hover:text-red-600">
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      )}
     </div>
   );
 }
@@ -511,6 +866,18 @@ interface QuizRowProps {
   onFormChange: (form: { text: string; choices: { id: string; text: string }[]; correct: string }) => void;
   onAddQuestion: () => void;
   onRemoveQuestion: (questionId: string) => void;
+  readOnly?: boolean;
+  sortableRef?: (node: HTMLElement | null) => void;
+  sortableStyle?: React.CSSProperties;
+  dragAttributes?: object;
+  dragListeners?: object;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  isFirst?: boolean;
+  isLast?: boolean;
+  sensors?: ReturnType<typeof useSensors>;
+  onReorderQuestions?: (quizId: string, fromIdx: number, toIdx: number) => void;
+  onApplyQuestionsReorder?: (quizId: string, ids: string[]) => void;
 }
 
 function QuizRow({
@@ -524,10 +891,32 @@ function QuizRow({
   onFormChange,
   onAddQuestion,
   onRemoveQuestion,
+  readOnly = false,
+  sortableRef,
+  sortableStyle,
+  dragAttributes,
+  dragListeners,
+  onMoveUp,
+  onMoveDown,
+  isFirst,
+  isLast,
+  sensors,
+  onReorderQuestions,
+  onApplyQuestionsReorder,
 }: QuizRowProps) {
   return (
-    <div className="rounded-md border bg-card">
+    <div ref={sortableRef} style={sortableStyle} className="rounded-md border bg-card">
       <div className="flex items-center gap-2 px-3 py-2 text-sm">
+        {!readOnly && dragAttributes && onMoveUp && onMoveDown && (
+          <ReorderControls
+            attributes={dragAttributes}
+            listeners={dragListeners}
+            onMoveUp={onMoveUp}
+            onMoveDown={onMoveDown}
+            isFirst={!!isFirst}
+            isLast={!!isLast}
+          />
+        )}
         <span className="text-xs text-muted-foreground w-6 shrink-0">{index + 1}.</span>
         <HelpCircle className="h-4 w-4 text-primary shrink-0" />
         <span className="flex-1 line-clamp-1">{item.title}</span>
@@ -535,11 +924,13 @@ function QuizRow({
           {item.question_count} question{item.question_count > 1 ? "s" : ""}
         </span>
         <button onClick={onToggle} className="text-xs text-primary hover:underline">
-          {expanded ? "Masquer" : "Éditer"}
+          {expanded ? "Masquer" : readOnly ? "Voir" : "Éditer"}
         </button>
-        <button onClick={onDelete} className="text-muted-foreground hover:text-red-600">
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+        {!readOnly && (
+          <button onClick={onDelete} className="text-muted-foreground hover:text-red-600">
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
       {expanded && (
         <div className="border-t p-3">
@@ -550,6 +941,18 @@ function QuizRow({
               onFormChange={onFormChange}
               onAdd={onAddQuestion}
               onRemove={onRemoveQuestion}
+              readOnly={readOnly}
+              sensors={sensors}
+              onMoveQuestion={
+                onReorderQuestions
+                  ? (fromIdx, toIdx) => onReorderQuestions(quiz.id, fromIdx, toIdx)
+                  : undefined
+              }
+              onApplyReorder={
+                onApplyQuestionsReorder
+                  ? (ids) => onApplyQuestionsReorder(quiz.id, ids)
+                  : undefined
+              }
             />
           ) : (
             <div className="text-xs text-muted-foreground italic">Chargement du quiz...</div>
@@ -566,9 +969,23 @@ interface QuizEditorProps {
   onFormChange: (form: { text: string; choices: { id: string; text: string }[]; correct: string }) => void;
   onAdd: () => void;
   onRemove: (questionId: string) => void;
+  readOnly?: boolean;
+  sensors?: ReturnType<typeof useSensors>;
+  onMoveQuestion?: (fromIdx: number, toIdx: number) => void;
+  onApplyReorder?: (ids: string[]) => void;
 }
 
-function QuizEditor({ quiz, form, onFormChange, onAdd, onRemove }: QuizEditorProps) {
+function QuizEditor({
+  quiz,
+  form,
+  onFormChange,
+  onAdd,
+  onRemove,
+  readOnly = false,
+  sensors,
+  onMoveQuestion,
+  onApplyReorder,
+}: QuizEditorProps) {
   const addChoice = () => {
     const nextId = String.fromCharCode(97 + form.choices.length);
     onFormChange({ ...form, choices: [...form.choices, { id: nextId, text: "" }] });
@@ -584,43 +1001,112 @@ function QuizEditor({ quiz, form, onFormChange, onAdd, onRemove }: QuizEditorPro
     });
   };
 
+  const canReorder = !readOnly && !!sensors && !!onMoveQuestion && !!onApplyReorder;
+
   return (
     <div className="space-y-3 rounded-lg bg-muted/10 p-3">
-      <div className="space-y-2">
-        {quiz.questions.length === 0 && (
-          <div className="text-xs text-muted-foreground italic">Aucune question.</div>
-        )}
-        {quiz.questions.map((q, idx) => (
-          <div key={q.id} className="rounded-md border bg-card p-3">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex-1 space-y-1">
-                <div className="text-sm font-medium">
-                  <span className="text-primary mr-1">Q{idx + 1}.</span>
-                  {q.text}
-                </div>
-                <ul className="text-xs text-muted-foreground space-y-0.5 ml-4">
-                  {q.choices.map((c: { id: string; text: string }) => (
-                    <li
-                      key={c.id}
-                      className={c.id === q.correct_choice_id ? "text-green-600 font-medium" : ""}
-                    >
-                      {c.id === q.correct_choice_id ? "✓ " : "• "}
-                      {c.text}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <button
-                onClick={() => onRemove(q.id)}
-                className="text-muted-foreground hover:text-red-600"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
+      {canReorder ? (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={(e: DragEndEvent) => {
+            const { active, over } = e;
+            if (!over || active.id === over.id) return;
+            const ids = quiz.questions.map((q) => q.id);
+            const from = ids.indexOf(String(active.id));
+            const to = ids.indexOf(String(over.id));
+            if (from < 0 || to < 0) return;
+            onApplyReorder!(arrayMove(ids, from, to));
+          }}
+        >
+          <SortableContext
+            items={quiz.questions.map((q) => q.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="space-y-2">
+              {quiz.questions.length === 0 && (
+                <div className="text-xs text-muted-foreground italic">Aucune question.</div>
+              )}
+              {quiz.questions.map((q, idx) => (
+                <Sortable key={q.id} id={q.id}>
+                  {({ setNodeRef, style, attributes, listeners }) => (
+                    <div ref={setNodeRef} style={style} className="rounded-md border bg-card p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <ReorderControls
+                          attributes={attributes}
+                          listeners={listeners}
+                          onMoveUp={() => onMoveQuestion!(idx, idx - 1)}
+                          onMoveDown={() => onMoveQuestion!(idx, idx + 1)}
+                          isFirst={idx === 0}
+                          isLast={idx === quiz.questions.length - 1}
+                        />
+                        <div className="flex-1 space-y-1">
+                          <div className="text-sm font-medium">
+                            <span className="text-primary mr-1">Q{idx + 1}.</span>
+                            {q.text}
+                          </div>
+                          <ul className="text-xs text-muted-foreground space-y-0.5 ml-4">
+                            {q.choices.map((c: { id: string; text: string }) => (
+                              <li
+                                key={c.id}
+                                className={
+                                  c.id === q.correct_choice_id ? "text-green-600 font-medium" : ""
+                                }
+                              >
+                                {c.id === q.correct_choice_id ? "✓ " : "• "}
+                                {c.text}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                        <button
+                          onClick={() => onRemove(q.id)}
+                          className="text-muted-foreground hover:text-red-600"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </Sortable>
+              ))}
             </div>
-          </div>
-        ))}
-      </div>
+          </SortableContext>
+        </DndContext>
+      ) : (
+        <div className="space-y-2">
+          {quiz.questions.length === 0 && (
+            <div className="text-xs text-muted-foreground italic">Aucune question.</div>
+          )}
+          {quiz.questions.map((q, idx) => (
+            <div key={q.id} className="rounded-md border bg-card p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 space-y-1">
+                  <div className="text-sm font-medium">
+                    <span className="text-primary mr-1">Q{idx + 1}.</span>
+                    {q.text}
+                  </div>
+                  <ul className="text-xs text-muted-foreground space-y-0.5 ml-4">
+                    {q.choices.map((c: { id: string; text: string }) => (
+                      <li
+                        key={c.id}
+                        className={
+                          c.id === q.correct_choice_id ? "text-green-600 font-medium" : ""
+                        }
+                      >
+                        {c.id === q.correct_choice_id ? "✓ " : "• "}
+                        {c.text}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
+      {!readOnly && (
       <div className="rounded-md border bg-background p-3 space-y-2">
         <Label className="text-xs">Nouvelle question</Label>
         <Input
@@ -679,6 +1165,7 @@ function QuizEditor({ quiz, form, onFormChange, onAdd, onRemove }: QuizEditorPro
           </Button>
         </div>
       </div>
+      )}
     </div>
   );
 }

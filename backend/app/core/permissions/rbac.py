@@ -61,9 +61,7 @@ class Permission(str, enum.Enum):
 ROLE_PERMISSIONS: dict[Role, set[Permission]] = {
     Role.ADMIN: set(Permission),  # Admin has all permissions
     Role.TEACHER: {
-        Permission.COURSE_CREATE,
         Permission.COURSE_READ,
-        Permission.COURSE_UPDATE,
         Permission.LIVE_CLASS_CREATE,
         Permission.LIVE_CLASS_MANAGE,
         Permission.HOMEWORK_CREATE,

@@ -128,13 +128,41 @@ async def toggle_user_active(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(Role.ADMIN)),
 ):
+    from app.modules.users import student_service  # import local : évite cycle
+
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    is_deactivating = user.is_active  # on s'apprête à passer à False
+    parent_to_notify = None
+
+    if is_deactivating and user.role == Role.STUDENT:
+        profile = await student_service.get_profile_by_user_id(db, user.id)
+        if profile is not None:
+            allowed, parent_to_notify = await student_service.can_deactivate_student(db, profile)
+            if not allowed:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "code": "minor_requires_verified_parent",
+                        "message": (
+                            "Impossible de désactiver un élève mineur sans contact "
+                            "parental vérifié. Ajoutez ou vérifiez d'abord un parent."
+                        ),
+                    },
+                )
+
     user.is_active = not user.is_active
     await db.flush()
-    return {"id": str(user.id), "is_active": user.is_active}
+
+    # TODO lot 3 : envoyer email à parent_to_notify.email via core/email/sender.py
+    # quand il est défini (mineur désactivé → notification au parent principal).
+    response = {"id": str(user.id), "is_active": user.is_active}
+    if parent_to_notify is not None:
+        response["parent_notified_email"] = parent_to_notify.email
+    return response
 
 
 # --- Course Management ---

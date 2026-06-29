@@ -61,18 +61,16 @@ class StudentProfileResponse(BaseModel):
     id: UUID
     user_id: UUID
     date_of_birth: Optional[str] = None
-    grade_level: Optional[str] = None
-    parent_name: Optional[str] = None
-    parent_phone: Optional[str] = None
-    parent_email: Optional[str] = None
+    school_level: Optional[str] = None
+    school_name: Optional[str] = None
+    city: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
 
 class StudentProfileUpdate(BaseModel):
     date_of_birth: Optional[str] = None
-    grade_level: Optional[str] = None
-    parent_name: Optional[str] = None
-    parent_phone: Optional[str] = None
-    parent_email: Optional[str] = None
+    school_level: Optional[str] = None
+    school_name: Optional[str] = None
+    city: Optional[str] = None
     address: Optional[str] = None

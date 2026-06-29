@@ -8,7 +8,7 @@ import { useAuthStore } from "@/store/auth";
 import type { CourseListItem } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, BookOpen, Settings2 } from "lucide-react";
+import { ArrowLeft, BookOpen, Eye } from "lucide-react";
 
 const PAGE_SIZE = 8;
 
@@ -95,9 +95,9 @@ export default function TeacherLevelCoursesPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-muted-foreground">
             <BookOpen className="h-12 w-12 mb-4 opacity-30" />
-            <p>Vous n&apos;avez aucun cours à ce niveau.</p>
+            <p>Aucun cours ne vous est assigné à ce niveau.</p>
             <p className="text-sm mt-1">
-              Retournez au catalogue pour créer un nouveau cours.
+              Contactez l&apos;administration pour l&apos;assignation de cours.
             </p>
           </CardContent>
         </Card>
@@ -141,8 +141,8 @@ export default function TeacherLevelCoursesPage() {
                   </div>
                   <Link href={`/teacher/courses/${course.id}/content`}>
                     <Button className="w-full" variant="default">
-                      <Settings2 className="h-4 w-4 mr-2" />
-                      Gérer le contenu
+                      <Eye className="h-4 w-4 mr-2" />
+                      Voir contenu
                     </Button>
                   </Link>
                 </CardContent>

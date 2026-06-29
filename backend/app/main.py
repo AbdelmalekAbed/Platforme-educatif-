@@ -3,7 +3,21 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.types import Scope
 from app.core.config import settings
+
+
+class CachedStaticFiles(StaticFiles):
+    """StaticFiles avec Cache-Control long. Les fichiers d'/uploads sont
+    content-addressed (nom = hash) donc réellement immuables : on autorise le
+    navigateur à les garder en cache un an au lieu de les re-télécharger (un PDF
+    peut peser des dizaines/centaines de Mo) à chaque ouverture/rechargement."""
+
+    async def get_response(self, path: str, scope: Scope):
+        response = await super().get_response(path, scope)
+        if response.status_code < 400:
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
 from app.api.router import api_router
 from app.websocket.endpoints import router as ws_router
 
@@ -46,6 +60,8 @@ def create_app() -> FastAPI:
         "/api/v1/homework",
         "/api/v1/payments",
         "/api/v1/notifications",
+        "/api/v1/students",
+        "/api/v1/parent-contacts",
     }
 
     @app.middleware("http")
@@ -66,7 +82,7 @@ def create_app() -> FastAPI:
     # Static uploads (PDFs/videos uploaded by admins/teachers)
     upload_dir = Path(__file__).resolve().parent.parent / "uploads"
     upload_dir.mkdir(parents=True, exist_ok=True)
-    app.mount("/uploads", StaticFiles(directory=str(upload_dir)), name="uploads")
+    app.mount("/uploads", CachedStaticFiles(directory=str(upload_dir)), name="uploads")
 
     @app.get("/health")
     async def health_check():

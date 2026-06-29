@@ -6,14 +6,31 @@ import { Download, FileText } from "lucide-react";
 interface PdfViewerProps {
   url: string;
   title?: string;
+  /**
+   * Full-bleed mode: the iframe fills its parent's height (used inside a flex column that bounds
+   * the height) and drops the internal toolbar — the parent supplies the header/actions. Gives the
+   * PDF the maximum reading space. Default (false) keeps the self-contained 70vh card.
+   */
+  fill?: boolean;
 }
 
-export function PdfViewer({ url, title }: PdfViewerProps) {
+export function PdfViewer({ url, title, fill = false }: PdfViewerProps) {
   // Use Google Docs viewer fallback if needed; here we rely on browser's native PDF viewer
   const embedUrl = useMemo(() => {
     const isAbsolute = /^https?:\/\//i.test(url);
     return isAbsolute ? url : url;
   }, [url]);
+
+  if (fill) {
+    // #view=FitH = ajuste la page à la largeur de l'iframe (sinon le navigateur l'ouvre à 100 %).
+    return (
+      <iframe
+        src={`${embedUrl}#view=FitH`}
+        title={title ?? "document"}
+        className="h-full w-full rounded-lg border bg-white"
+      />
+    );
+  }
 
   return (
     <div className="space-y-2">

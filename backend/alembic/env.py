@@ -20,6 +20,7 @@ from app.modules.recordings.models import Recording
 from app.modules.homework.models import Homework, HomeworkSubmission
 from app.modules.payments.models import Payment, Invoice
 from app.modules.notifications.models import Notification
+from app.modules.settings.models import PlatformSetting
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL_SYNC)

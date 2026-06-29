@@ -152,6 +152,69 @@ export interface PlatformStats {
   total_revenue: number;
 }
 
+// ---- Platform settings ----
+export interface PlatformSection {
+  name: string;
+  description: string;
+  support_email?: string | null;
+  default_language: "fr" | "en" | "ar";
+  timezone: string;
+}
+
+export interface SignupsSection {
+  public_signup_open: boolean;
+  require_email_verification: boolean;
+  default_role: "student" | "teacher";
+  auto_approve_teachers: boolean;
+  require_invite_for_teachers: boolean;
+}
+
+export interface SecuritySection {
+  session_timeout_minutes: number;
+  password_min_length: number;
+  require_mfa_for_admins: boolean;
+  max_login_attempts: number;
+}
+
+export interface NotificationsSection {
+  email_notifications_global: boolean;
+  notify_on_new_signup: boolean;
+  notify_on_payment: boolean;
+  notify_on_assignment_due: boolean;
+  weekly_digest: boolean;
+}
+
+export interface CoursesSection {
+  default_pass_score: number;
+  video_max_size_mb: number;
+  auto_archive_after_days: number;
+  allow_student_course_rating: boolean;
+}
+
+export interface AppearanceSection {
+  accent_color: string;
+  default_theme: "light" | "dark" | "system";
+}
+
+export interface PlatformSettings {
+  platform: PlatformSection;
+  signups: SignupsSection;
+  security: SecuritySection;
+  notifications: NotificationsSection;
+  courses: CoursesSection;
+  appearance: AppearanceSection;
+}
+
+export type SettingsSectionKey = keyof PlatformSettings;
+
+export interface PublicSettings {
+  name: string;
+  description: string;
+  support_email?: string | null;
+  default_language: string;
+  public_signup_open: boolean;
+}
+
 // ---- Course content ----
 
 export type ResourceKind = "video" | "pdf" | "exercise" | "correction" | "fiche";
@@ -207,6 +270,7 @@ export interface ChapterWithItems {
   position: number;
   items_count: number;
   items: ChapterItem[];
+  is_known?: boolean;
 }
 
 export interface CourseFull {
@@ -219,6 +283,7 @@ export interface CourseFull {
   teacher_id: string;
   teacher_name: string;
   progress_percent: number;
+  is_known?: boolean;
   chapters: ChapterWithItems[];
 }
 
@@ -239,6 +304,7 @@ export interface CourseListItem {
   teacher_name: string;
   created_at: string;
   progress_percent: number;
+  is_known?: boolean;
   is_active?: boolean;
 }
 
@@ -248,6 +314,7 @@ export interface CoursesByLevelResponse {
   skip: number;
   limit: number;
   has_more: boolean;
+  level_progress_percent: number;
 }
 
 export interface TeacherDashboardCourse {

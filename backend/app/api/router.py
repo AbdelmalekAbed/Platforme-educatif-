@@ -8,6 +8,11 @@ from app.api.routes.notifications import router as notifications_router
 from app.api.routes.payments import router as payments_router
 from app.api.routes.admin import router as admin_router
 from app.api.routes.content import router as content_router
+from app.api.routes.settings import admin_router as settings_admin_router, public_router as settings_public_router
+from app.api.routes.students import (
+    students_router,
+    parent_contacts_router,
+)
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -19,3 +24,7 @@ api_router.include_router(notifications_router)
 api_router.include_router(payments_router)
 api_router.include_router(admin_router)
 api_router.include_router(content_router)
+api_router.include_router(settings_admin_router)
+api_router.include_router(settings_public_router)
+api_router.include_router(students_router)
+api_router.include_router(parent_contacts_router)

@@ -4,15 +4,20 @@
 -- Utilisation:
 --   psql -U postgres -d edtech -f scripts/db/create_admin.sql
 --
--- Note: Préférez seed_admin.py qui génère le hash bcrypt correct.
---       Ce fichier est un fallback si Python n'est pas disponible.
+-- Identifiants par défaut:
+--   Email    : admin@edtech.com
+--   Password : Admin123456
 --
--- Pour générer le hash bcrypt du mot de passe :
+-- Note: Préférez seed_admin.py si Python est disponible.
+--       Pour régénérer le hash bcrypt d'un autre mot de passe :
 --   python -c "from passlib.context import CryptContext; \
 --              ctx = CryptContext(schemes=['bcrypt'], deprecated='auto'); \
---              print(ctx.hash('Admin123456'))"
+--              print(ctx.hash('VotreMotDePasse'))"
 -- Puis remplacez la valeur hashed_password ci-dessous.
 -- ========================================
+
+-- gen_random_uuid() est natif depuis PostgreSQL 13 ; pgcrypto le fournit sur les versions antérieures.
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 INSERT INTO users (
     id,
@@ -29,7 +34,8 @@ INSERT INTO users (
 ) VALUES (
     gen_random_uuid(),
     'admin@edtech.com',
-    '$2b$12$REMPLACEZ_PAR_LE_HASH_GENERE_CI_DESSUS',
+    -- Hash bcrypt de "Admin123456" (cost=12)
+    '$2b$12$/Q7aNKyGmjFK6eUP5oHYHuO56kUdaSuik9U9cICWo17TSHQodmcze',
     'Admin',
     'Platform',
     '+1234567890',

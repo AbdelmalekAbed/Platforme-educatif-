@@ -258,7 +258,7 @@ async def list_sessions(
 async def enroll(
     data: EnrollmentCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(Role.ADMIN, Role.TEACHER)),
+    current_user: User = Depends(require_role(Role.ADMIN)),
 ):
     enrollment = await service.enroll_student(db, data.student_id, data.course_id)
     return enrollment

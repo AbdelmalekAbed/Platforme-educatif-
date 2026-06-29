@@ -2,18 +2,38 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import create_access_token, create_refresh_token, decode_token
+from app.core.permissions import Role
 from app.modules.auth.schemas import (
     RegisterRequest, LoginRequest, TokenResponse, RefreshRequest, UserResponse,
 )
 from app.modules.auth.service import create_user, authenticate_user, get_user_by_email, get_user_by_id
 from app.api.dependencies import get_current_user
 from app.modules.users.models import User
+from app.modules.settings import service as settings_service
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    # Enforce admin-controlled signup policy from platform_settings.
+    signups = await settings_service.get_section(db, "signups")
+    if not signups.public_signup_open:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Les inscriptions publiques sont actuellement fermées.",
+        )
+    # Refuse self-registration as admin from the public endpoint (never honored).
+    # Force the configured default role unless caller asked for the still-allowed
+    # alternative (student/teacher).
+    if data.role == Role.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Inscription admin non autorisée.",
+        )
+    if data.role not in (Role.STUDENT, Role.TEACHER, Role.VENDOR):
+        data.role = Role(signups.default_role)
+
     existing = await get_user_by_email(db, data.email)
     if existing:
         raise HTTPException(

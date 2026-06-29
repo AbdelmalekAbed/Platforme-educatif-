@@ -230,8 +230,11 @@ class ApiClient {
     return this.request<import("@/types").PlatformStats>("/admin/stats");
   }
 
-  getUsers(role?: string) {
-    const query = role ? `?role=${role}` : "";
+  getUsers(role?: string, limit?: number) {
+    const params = new URLSearchParams();
+    if (role) params.set("role", role);
+    if (limit !== undefined) params.set("limit", String(limit));
+    const query = params.toString() ? `?${params.toString()}` : "";
     return this.request<import("@/types").User[]>(`/admin/users${query}`);
   }
 
@@ -239,6 +242,25 @@ class ApiClient {
     return this.request(`/admin/users/${userId}/toggle-active`, {
       method: "PUT",
     });
+  }
+
+  // Platform settings
+  getSettings() {
+    return this.request<import("@/types").PlatformSettings>("/admin/settings");
+  }
+
+  updateSettings<K extends import("@/types").SettingsSectionKey>(
+    section: K,
+    data: import("@/types").PlatformSettings[K]
+  ) {
+    return this.request<import("@/types").PlatformSettings[K]>(
+      `/admin/settings/${section}`,
+      { method: "PUT", body: JSON.stringify(data) }
+    );
+  }
+
+  getPublicSettings() {
+    return this.request<import("@/types").PublicSettings>("/public/settings");
   }
 
   // Subjects
@@ -343,6 +365,27 @@ class ApiClient {
     return this.request(`/content/chapters/${chapterId}`, { method: "DELETE" });
   }
 
+  reorderChapters(courseId: string, chapterIds: string[]) {
+    return this.request(`/content/courses/${courseId}/chapters/reorder`, {
+      method: "PATCH",
+      body: JSON.stringify({ chapter_ids: chapterIds }),
+    });
+  }
+
+  reorderChapterItems(chapterId: string, items: { type: "resource" | "quiz"; id: string }[]) {
+    return this.request(`/content/chapters/${chapterId}/items/reorder`, {
+      method: "PATCH",
+      body: JSON.stringify({ items }),
+    });
+  }
+
+  reorderQuizQuestions(quizId: string, questionIds: string[]) {
+    return this.request(`/content/quizzes/${quizId}/questions/reorder`, {
+      method: "PATCH",
+      body: JSON.stringify({ question_ids: questionIds }),
+    });
+  }
+
   // Chapter detail (flat item list)
   getChapterWithItems(chapterId: string) {
     return this.request<import("@/types").ChapterWithItems>(
@@ -379,6 +422,22 @@ class ApiClient {
 
   markResourceCompleted(resourceId: string) {
     return this.request(`/content/resources/${resourceId}/complete`, { method: "POST" });
+  }
+
+  markCourseKnown(courseId: string) {
+    return this.request(`/content/courses/${courseId}/known`, { method: "POST" });
+  }
+
+  unmarkCourseKnown(courseId: string) {
+    return this.request(`/content/courses/${courseId}/known`, { method: "DELETE" });
+  }
+
+  markChapterKnown(chapterId: string) {
+    return this.request(`/content/chapters/${chapterId}/known`, { method: "POST" });
+  }
+
+  unmarkChapterKnown(chapterId: string) {
+    return this.request(`/content/chapters/${chapterId}/known`, { method: "DELETE" });
   }
 
   async uploadFile(file: File): Promise<{ url: string; kind: string; filename: string; size: number }> {

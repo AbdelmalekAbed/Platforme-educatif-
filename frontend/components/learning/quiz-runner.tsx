@@ -2,19 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/services/api";
-import type { Quiz, QuizAttempt } from "@/types";
+import type { Quiz, QuizAdmin, QuizAttempt } from "@/types";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, XCircle, Award, RotateCcw } from "lucide-react";
 
 interface QuizRunnerProps {
   quizId: string;
   onCompleted?: (attempt: QuizAttempt) => void;
+  /** When true, show questions with correct answers and no submit flow — for teacher/admin preview. */
+  readOnly?: boolean;
 }
 
 type ViewState = "intro" | "running" | "result";
 
-export function QuizRunner({ quizId, onCompleted }: QuizRunnerProps) {
+export function QuizRunner({ quizId, onCompleted, readOnly = false }: QuizRunnerProps) {
   const [quiz, setQuiz] = useState<Quiz | null>(null);
+  const [adminQuiz, setAdminQuiz] = useState<QuizAdmin | null>(null);
   const [view, setView] = useState<ViewState>("intro");
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -24,12 +27,15 @@ export function QuizRunner({ quizId, onCompleted }: QuizRunnerProps) {
 
   useEffect(() => {
     setLoading(true);
-    api
-      .getQuizForStudent(quizId)
-      .then(setQuiz)
+    const fetcher = readOnly ? api.getQuizAdmin(quizId) : api.getQuizForStudent(quizId);
+    fetcher
+      .then((q) => {
+        if (readOnly) setAdminQuiz(q as QuizAdmin);
+        else setQuiz(q as Quiz);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "Erreur"))
       .finally(() => setLoading(false));
-  }, [quizId]);
+  }, [quizId, readOnly]);
 
   const start = () => {
     setAnswers({});
@@ -65,10 +71,66 @@ export function QuizRunner({ quizId, onCompleted }: QuizRunnerProps) {
     );
   }
 
-  if (error && !quiz) {
+  if (error && !quiz && !adminQuiz) {
     return (
       <div className="rounded-xl border bg-red-50 border-red-200 py-8 text-center text-red-700">
         {error}
+      </div>
+    );
+  }
+
+  if (readOnly && adminQuiz) {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-xl border bg-gradient-to-br from-primary/5 to-background p-5">
+          <h3 className="text-2xl font-bold">{adminQuiz.title}</h3>
+          {adminQuiz.instructions && (
+            <p className="mt-2 text-sm text-muted-foreground">{adminQuiz.instructions}</p>
+          )}
+          <div className="mt-2 text-xs text-muted-foreground">
+            {adminQuiz.questions.length} questions • Note de passage : {adminQuiz.pass_score}% •
+            Aperçu prof (les bonnes réponses sont en vert)
+          </div>
+        </div>
+        {adminQuiz.questions.length === 0 && (
+          <div className="rounded-xl border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
+            Aucune question dans ce quiz.
+          </div>
+        )}
+        {adminQuiz.questions.map((q, i) => (
+          <div key={q.id} className="rounded-xl border bg-card p-5">
+            <div className="font-medium">
+              <span className="text-primary mr-2">Q{i + 1}.</span> {q.text}
+            </div>
+            <ul className="mt-3 space-y-2 text-sm">
+              {q.choices.map((c) => {
+                const isCorrect = c.id === q.correct_choice_id;
+                return (
+                  <li
+                    key={c.id}
+                    className={`flex items-center gap-3 rounded-lg border p-3 ${
+                      isCorrect
+                        ? "border-green-300 bg-green-50 text-green-900"
+                        : "bg-background"
+                    }`}
+                  >
+                    {isCorrect ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                    ) : (
+                      <span className="h-4 w-4 shrink-0 rounded-full border" />
+                    )}
+                    <span className={isCorrect ? "font-medium" : ""}>{c.text}</span>
+                  </li>
+                );
+              })}
+            </ul>
+            {q.explanation && (
+              <div className="mt-3 rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
+                <span className="font-semibold">Explication :</span> {q.explanation}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     );
   }

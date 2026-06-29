@@ -104,7 +104,8 @@ class QuizQuestionStudentResponse(BaseModel):
 class QuizCreate(BaseModel):
     title: str = Field(default="Quiz")
     instructions: Optional[str] = "Lis bien les questions avant de répondre"
-    pass_score: float = 50.0
+    # None → server uses platform_settings.courses.default_pass_score.
+    pass_score: Optional[float] = None
     position: int = 0
 
 
@@ -197,6 +198,29 @@ class ChapterWithItems(BaseModel):
     position: int
     items_count: int
     items: List[ChapterItem] = []
+
+
+# ---------- Reorder requests (admin) ----------
+
+
+class ChapterReorderRequest(BaseModel):
+    """Ordered list of chapter UUIDs; new position = index in the list."""
+    chapter_ids: List[UUID]
+
+
+class ChapterItemReorderEntry(BaseModel):
+    type: Literal["resource", "quiz"]
+    id: UUID
+
+
+class ChapterItemsReorderRequest(BaseModel):
+    """Ordered list of (type, id) pairs; resources and quizzes share a single position sequence."""
+    items: List[ChapterItemReorderEntry]
+
+
+class QuizQuestionsReorderRequest(BaseModel):
+    """Ordered list of question UUIDs; new position = index in the list."""
+    question_ids: List[UUID]
 
 
 class CourseWithChapters(BaseModel):

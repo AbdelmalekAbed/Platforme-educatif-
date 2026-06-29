@@ -37,15 +37,11 @@ class StudentProfile(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
     date_of_birth = Column(Date, nullable=True)
-    grade_level = Column(String(50), nullable=True)  # deprecated: backfilled into school_level, dropped in migration #2
     school_level = Column(String(50), nullable=True)
     school_name = Column(String(200), nullable=True)
     city = Column(String(100), nullable=True)
     preferred_language = Column(String(10), nullable=True, server_default="fr")
     gender = Column(String(20), nullable=True)
-    parent_name = Column(String(200), nullable=True)  # deprecated: backfilled into parent_contacts
-    parent_phone = Column(String(20), nullable=True)  # deprecated
-    parent_email = Column(String(255), nullable=True)  # deprecated
     address = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
 

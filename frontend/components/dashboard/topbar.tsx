@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
+import { usePlatformStore } from "@/store/platform";
 import { api } from "@/services/api";
 import type { Notification as NotifType } from "@/types";
 import { Bell, Check, CheckCheck } from "lucide-react";
@@ -21,9 +22,15 @@ const TYPE_DOT: Record<NotifType["type"], string> = {
 export function TopBar() {
   const router = useRouter();
   const { user, isAuthenticated } = useAuthStore();
+  const platformSettings = usePlatformStore((s) => s.settings);
+  const ensurePlatformLoaded = usePlatformStore((s) => s.ensureLoaded);
   const [notifications, setNotifications] = useState<NotifType[]>([]);
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    ensurePlatformLoaded();
+  }, [ensurePlatformLoaded]);
 
   const load = useCallback(async () => {
     try {
@@ -83,8 +90,11 @@ export function TopBar() {
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background/95 px-6 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div>
-        <h2 className="text-lg font-semibold">
+      <div className="min-w-0">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground truncate">
+          {platformSettings?.name ?? "EdTech Platform"}
+        </p>
+        <h2 className="text-lg font-semibold truncate">
           Bienvenue, {user?.first_name} 👋
         </h2>
       </div>
