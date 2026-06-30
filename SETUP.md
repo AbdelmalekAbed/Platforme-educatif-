@@ -293,6 +293,11 @@ Une fois le setup terminé sur tous les PC :
 # En arrivant sur un PC
 git pull
 
+# Si backend/requirements/*.txt a changé depuis le dernier pull → réinstaller :
+cd backend && pip install -r requirements/dev.txt && cd ..
+# Si frontend/package.json (ou package-lock.json) a changé → réinstaller :
+cd frontend && npm install && cd ..
+
 # En quittant un PC
 git add .
 git commit -m "..."
@@ -301,6 +306,7 @@ git push
 
 - Le **code** se synchronise via Git
 - Les **données** se synchronisent automatiquement via Neon
+- Les **dépendances** (venv Python, `node_modules`) ne sont **pas** dans Git : après un `git pull` qui modifie `requirements/*.txt` ou `package.json`, il faut les réinstaller sur **chaque** PC (voir ci-dessous).
 
 ### Migrations DB futures
 
@@ -312,6 +318,27 @@ Quand tu modifies un modèle SQLAlchemy :
 4. Sur les autres PC : juste `git pull` — la migration est déjà appliquée dans Neon, pas besoin de relancer
 
 > ⚠️ Ne jamais lancer deux `alembic upgrade` en parallèle depuis deux PC sur la même base. Choisir un PC "maître" pour les migrations.
+
+### Mises à jour des dépendances (Dependabot, ajout d'un package)
+
+Le **venv Python** (`backend/venv/`) et **`frontend/node_modules/`** sont **gitignored** : seuls les fichiers de déclaration (`requirements/*.txt`, `package.json`, `package-lock.json`) sont versionnés. Donc quand ces fichiers changent — un PR Dependabot mergé, l'ajout d'une lib — les paquets installés ne se mettent **pas** à jour tout seuls au `git pull`. Sur **chaque** PC :
+
+```bash
+# Après un git pull qui touche backend/requirements/*.txt
+cd backend
+# (activer le venv si besoin : .\venv\Scripts\Activate.ps1  ou  source venv/bin/activate)
+pip install -r requirements/dev.txt
+
+# Après un git pull qui touche frontend/package.json ou package-lock.json
+cd frontend
+npm install
+```
+
+> 💡 Pour savoir si une réinstallation est nécessaire après un pull :
+> `git diff HEAD@{1} --name-only | grep -E 'requirements/|package(-lock)?\.json'`
+> (liste les fichiers de dépendances modifiés par le dernier pull ; si vide → rien à réinstaller).
+>
+> Astuce setup PC perso (cf. CLAUDE.md piège #10) : ici le **frontend tourne nativement sous Windows** et le **backend sous WSL**. Le `pip install` se fait donc côté WSL (`./venv/bin/python -m pip install -r requirements/dev.txt`) et le `npm install` côté Windows.
 
 ### Conflits Git
 
@@ -352,6 +379,8 @@ Pour l'instant, les garder locaux est largement suffisant.
 | Première requête lente après inactivité | Normal — Neon free tier suspend après 5 min d'inactivité, 1-2s de wake-up |
 | Frontend ne contacte pas le backend | Vérifier que le backend tourne sur le port 8000 |
 | `pip install` échoue sur `psycopg2-binary` | Installer les outils de build PostgreSQL ou `pip install psycopg[binary]` |
+| `ModuleNotFoundError` / `ImportError` au démarrage backend après un `git pull` | Les versions de `requirements/*.txt` ont changé → relancer `pip install -r requirements/dev.txt` |
+| Erreur frontend « module not found » après un `git pull` | `package.json`/`package-lock.json` a changé → relancer `npm install` |
 | Port 6379 déjà utilisé | Stopper l'instance Redis locale ou changer le port dans `docker-compose.yml` |
 | Dépassement quota Neon (0.5 GB) | Faire le ménage dans la base, ou upgrade vers le plan payant |
 | `alembic upgrade head` dit "Target database is not up to date" | Vérifier que tu pointes bien sur la même base Neon que les autres PC |
