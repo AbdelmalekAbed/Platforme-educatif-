@@ -21,9 +21,8 @@ backups/
 *.sql.gz
 *.dump
 
-# Uploads & contenu binaire (fichiers utilisateur — vivent dans MinIO/S3, pas dans Git)
+# Uploads runtime (régénérés par scripts/db/seed_6eme_courses.py depuis cours/)
 backend/uploads/
-cours/
 
 # OS
 .DS_Store
