@@ -1,7 +1,9 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
+
+from app.core.security.media_tokens import sign_media_url
 
 
 class HomeworkCreate(BaseModel):
@@ -26,6 +28,11 @@ class HomeworkResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
+    @field_serializer("attachment_url")
+    def _sign_attachment(self, value: Optional[str]) -> Optional[str]:
+        # /uploads/* attachments leave the backend signed; external URLs pass through.
+        return sign_media_url(value)
+
 
 class SubmissionCreate(BaseModel):
     homework_id: UUID
@@ -46,6 +53,11 @@ class SubmissionResponse(BaseModel):
     status: str
 
     model_config = {"from_attributes": True}
+
+    @field_serializer("attachment_url")
+    def _sign_attachment(self, value: Optional[str]) -> Optional[str]:
+        # /uploads/* attachments leave the backend signed; external URLs pass through.
+        return sign_media_url(value)
 
 
 class GradeSubmission(BaseModel):

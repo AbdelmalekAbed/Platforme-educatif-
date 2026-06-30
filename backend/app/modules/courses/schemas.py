@@ -1,7 +1,9 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
+
+from app.core.security.media_tokens import sign_media_url
 
 
 class SubjectCreate(BaseModel):
@@ -60,6 +62,11 @@ class CourseResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_serializer("thumbnail_url")
+    def _sign_thumbnail(self, value: Optional[str]) -> Optional[str]:
+        # /uploads/* thumbnails leave the backend signed; external URLs pass through.
+        return sign_media_url(value)
 
 
 class SessionCreate(BaseModel):

@@ -4,6 +4,7 @@ from sqlalchemy import select, func, delete
 from uuid import UUID
 from app.core.database import get_db
 from app.core.permissions import Role, Permission
+from app.core.security.media_tokens import sign_media_url
 from app.api.dependencies import get_current_user, require_role
 from app.modules.users.models import User, StudentProfile, TeacherProfile
 from app.modules.courses.models import Course, Enrollment, Subject
@@ -189,7 +190,7 @@ async def list_all_courses(
             "max_students": course.max_students,
             "price": course.price,
             "is_active": course.is_active,
-            "thumbnail_url": course.thumbnail_url,
+            "thumbnail_url": sign_media_url(course.thumbnail_url),
             "created_at": course.created_at.isoformat(),
             "teacher_id": str(course.teacher_id),
             "teacher_name": f"{teacher_user.first_name} {teacher_user.last_name}",

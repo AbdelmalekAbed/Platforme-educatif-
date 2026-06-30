@@ -97,7 +97,7 @@ SETUP.md                     # guide d'installation complet
 - **Base de données** : Neon (cloud), partagée entre tous les PC du dev. **Ne pas relancer `alembic upgrade head` ni le seed admin sur un PC qui n'est pas le premier**.
 - **Branche de travail** : `master`
 - **Branche principale** : `main`
-- **Repo GitHub** : pas encore publié (sera créé sur un nouveau compte) — pour l'instant, commits en local uniquement.
+- **Repo GitHub** : publié sur `origin` → <https://github.com/AbdelmalekAbed/Platforme-educatif-> (branche de dev `master`).
 - **Données** : test data, mais l'utilisateur migrera bientôt vers de vraies données (raison du choix Neon).
 - **Contenu 6ème** : préparé en base le 2026-06-06 via `scripts/db/seed_6eme_courses.py` depuis `cours/6ème/`. **Toute** l'arborescence du curriculum est créée : **16 cours** (= toutes les matières, sous-dossiers directs de `6ème/`, même vides), **26 chapitres** (= toutes les notions, y compris vides), **62 PDF** copiés dans `backend/uploads/`. Seuls les PDF commençant par `6eme` deviennent des ressources (kinds `pdf`/`fiche`/`correction`). Les cours sans notion (0 chapitre) et les notions sans PDF (0 ressource) sont des **placeholders** : il suffira d'ajouter les dossiers/PDF puis de relancer le script. **Idempotent (upsert)** : identifie cours par (grade_level, titre), chapitre par (course_id, titre), ressource par (chapter_id, kind) ; ne recrée/recopie jamais l'existant (progression préservée). `--replace` reconstruit tout (destructif). `--dry-run` pour un aperçu.
 
@@ -178,6 +178,13 @@ cd backend
 pytest
 ```
 
+Sécurité `/uploads` (sans pytest installé dans le venv, lancement standalone) :
+
+```bash
+# venv Linux/WSL — cf. piège #9
+wsl -e bash -lc "cd /mnt/c/Users/aabed/Desktop/Platform/backend && ./venv/bin/python tests/test_uploads_security.py"
+```
+
 ### Lint frontend
 
 ```bash
@@ -236,6 +243,12 @@ npm run lint
 9. **Le venv est un venv WSL/Linux** (`backend/venv/bin/`, pas `Scripts/`) : l'exécuter depuis Windows/MinGW échoue. Lancer les scripts via `wsl -e bash -lc "./backend/venv/bin/python …"`.
 
 10. **Setup de dev (PC perso) : frontend sous Windows, backend sous WSL.** Le projet vit sur `/mnt/c` ; lancer Next **depuis WSL** sur `/mnt/c` est très lent (compile ~67 s, file-watching cross-OS). Le frontend tourne donc **nativement sous Windows** (PowerShell : `cd frontend; npm run dev` → démarre en ~2 s). `frontend/node_modules` contient les binaires **win32** (`@next/swc-win32`) : il ne tourne **plus** sous WSL sauf à refaire un `npm install` côté WSL (qui re-supprimerait les binaires Windows — choisir une seule plateforme). Le **backend reste sous WSL** (venv Linux, pas de Python installé sous Windows ; ce n'est pas le goulot). Le frontend Windows atteint le backend WSL via `localhost:8000` (WSL2 forwarde localhost). Si Next refuse de démarrer (« Another next dev server is already running »), un serveur WSL tourne encore ou un verrou `.next` est obsolète → couper l'ancien, au besoin `Remove-Item -Recurse -Force frontend/.next`.
+
+11. **`/uploads` n'est PLUS un mount statique public** (corrigé 2026-06-30). Les fichiers (PDF, vidéos, miniatures) sont servis par une route auth-gated `GET /uploads/{path}` (`app/api/routes/uploads.py`) qui **exige un token signé** dans l'URL (`?exp=&token=`). Le token est un HMAC-SHA256 (`app/core/security/media_tokens.py`, clé `SECRET_KEY`, validité 4–8 h — `DEFAULT_TTL` 4 h + bucketing par fenêtre de 4 h pour rester cacheable). Une URL `/uploads/...` **brute** (sans token) renvoie **403** — même chose pour un token trafiqué/expiré, et une tentative de path-traversal renvoie **404**. Conséquences pratiques :
+    - Toute URL `/uploads/...` renvoyée au front doit passer par `sign_media_url()`. C'est déjà fait : `field_serializer` sur `ChapterResourceResponse.url`, `CourseResponse.thumbnail_url`, `HomeworkResponse/SubmissionResponse.attachment_url`, + appels manuels dans les endpoints qui renvoient des **dicts** (`content.py` items + miniatures, `admin.py` miniatures). **Si tu ajoutes un nouvel endpoint qui expose une URL `/uploads/...`, pense à la signer**, sinon l'élément casse côté UI (403).
+    - L'upload (`POST /content/uploads`) renvoie l'URL **brute** (stockée telle quelle en DB) ; la signature est appliquée **à la lecture** seulement (sinon on stockerait un `exp` périmé).
+    - `SECRET_KEY` protège tous les fichiers : avec une clé connue, les tokens sont forgeables. Le fix **refuse donc de démarrer** (`settings.py`, validator) si `SECRET_KEY` est un placeholder connu ou fait < 32 caractères **quand `DEBUG=False`**. En prod : `openssl rand -hex 32`. En local (`DEBUG=True`) le placeholder reste toléré.
+    - Pas de gating par *enrollment* : le modèle d'autorisation du contenu est « tout utilisateur authentifié » (les endpoints `content.py` ne vérifient pas l'enrollment). Le fix aligne les fichiers sur ce même niveau.
 
 ---
 

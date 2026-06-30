@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 
 from app.core.database import get_db
 from app.core.permissions import Role
+from app.core.security.media_tokens import sign_media_url
 from app.api.dependencies import get_current_user, require_role
 from app.modules.users.models import User, TeacherProfile
 from app.modules.courses.models import (
@@ -261,7 +262,7 @@ async def _chapter_items_payload(
             "id": str(r.id),
             "title": r.title,
             "kind": r.kind,
-            "url": r.url,
+            "url": sign_media_url(r.url),
             "duration_seconds": r.duration_seconds,
             "position": r.position,
             "is_completed": force_completed or r.id in completed_resource_ids,
@@ -1001,7 +1002,7 @@ async def list_courses_by_level(
             "description": course.description,
             "subject": course.subject,
             "grade_level": course.grade_level,
-            "thumbnail_url": course.thumbnail_url,
+            "thumbnail_url": sign_media_url(course.thumbnail_url),
             "teacher_id": str(course.teacher_id),
             "teacher_name": f"{teacher_user.first_name} {teacher_user.last_name}",
             "created_at": course.created_at.isoformat(),
@@ -1093,7 +1094,7 @@ async def get_course_full(
         "description": course.description,
         "subject": course.subject,
         "grade_level": course.grade_level,
-        "thumbnail_url": course.thumbnail_url,
+        "thumbnail_url": sign_media_url(course.thumbnail_url),
         "teacher_id": str(course.teacher_id),
         "teacher_name": f"{teacher_user.first_name} {teacher_user.last_name}",
         "progress_percent": progress_percent,

@@ -2,23 +2,9 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from starlette.types import Scope
 from app.core.config import settings
-
-
-class CachedStaticFiles(StaticFiles):
-    """StaticFiles avec Cache-Control long. Les fichiers d'/uploads sont
-    content-addressed (nom = hash) donc réellement immuables : on autorise le
-    navigateur à les garder en cache un an au lieu de les re-télécharger (un PDF
-    peut peser des dizaines/centaines de Mo) à chaque ouverture/rechargement."""
-
-    async def get_response(self, path: str, scope: Scope):
-        response = await super().get_response(path, scope)
-        if response.status_code < 400:
-            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-        return response
 from app.api.router import api_router
+from app.api.routes.uploads import router as uploads_router
 from app.websocket.endpoints import router as ws_router
 
 # Import all models so SQLAlchemy can resolve string-based relationships
@@ -79,10 +65,11 @@ def create_app() -> FastAPI:
     # WebSocket routes
     app.include_router(ws_router)
 
-    # Static uploads (PDFs/videos uploaded by admins/teachers)
+    # Uploaded files (PDFs/videos/thumbnails). Served by an auth-gated route that
+    # requires a signed token — NOT a public static mount. See app.api.routes.uploads.
     upload_dir = Path(__file__).resolve().parent.parent / "uploads"
     upload_dir.mkdir(parents=True, exist_ok=True)
-    app.mount("/uploads", CachedStaticFiles(directory=str(upload_dir)), name="uploads")
+    app.include_router(uploads_router)
 
     @app.get("/health")
     async def health_check():

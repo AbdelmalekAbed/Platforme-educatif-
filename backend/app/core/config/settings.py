@@ -1,5 +1,15 @@
 from pydantic_settings import BaseSettings
+from pydantic import model_validator
 from typing import Optional
+
+# Known placeholder secrets shipped in the repo (code default + .env.example).
+# If any of these is used as SECRET_KEY in production the /uploads signed-URL
+# scheme is trivially forgeable, so we refuse to boot with them when DEBUG is off.
+_PLACEHOLDER_SECRETS = {
+    "CHANGE-ME-IN-PRODUCTION-USE-LONG-RANDOM-STRING",
+    "change-me-in-production-use-long-random-secret-key",
+}
+_MIN_SECRET_LEN = 32
 
 
 class Settings(BaseSettings):
@@ -42,6 +52,24 @@ class Settings(BaseSettings):
     EMAIL_FROM: str = "noreply@edtech.com"
 
     model_config = {"env_file": ".env", "extra": "ignore"}
+
+    @model_validator(mode="after")
+    def _require_strong_secret_in_prod(self):
+        """Fail closed in production on a weak/placeholder SECRET_KEY.
+
+        SECRET_KEY signs the /uploads access tokens (see
+        app.core.security.media_tokens). With a known/placeholder key those
+        tokens are forgeable by anyone, which would re-open the unauthenticated
+        file-download hole. We allow the placeholder only in local dev (DEBUG)."""
+        if not self.DEBUG and (
+            self.SECRET_KEY in _PLACEHOLDER_SECRETS or len(self.SECRET_KEY) < _MIN_SECRET_LEN
+        ):
+            raise ValueError(
+                "SECRET_KEY must be a strong, non-default value when DEBUG is False "
+                "(it signs /uploads access tokens). Generate one with: "
+                "openssl rand -hex 32"
+            )
+        return self
 
 
 settings = Settings()
